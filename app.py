@@ -23,5 +23,6 @@ def combine_txt_files(directory: str, output_filename: str = "combined_output.tx
         print(f"❌ Failed to write output file: {e}")
 
 if __name__ == "__main__":
-    current_directory = os.getcwd()
-    combine_txt_files(current_directory)
+    input_directory = os.path.join(os.getcwd(), "input")
+    combine_txt_files(input_directory)
+
