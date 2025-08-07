@@ -1,1 +1,1 @@
-Combines the contents of all `.txt` files in the `input` directory into a single text file called `combined_output.txt`. The combined file is saved in the same directory and includes clear section markers for each source file.
+Combines the contents of all `.txt` files in the `input` directory into a single text file called `combined_output.txt`.
