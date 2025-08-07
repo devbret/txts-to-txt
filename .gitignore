@@ -1,2 +1,4 @@
 /venv
+input/*.txt
 combined_output.txt
+combine_txt.log
