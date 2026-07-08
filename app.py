@@ -1,11 +1,30 @@
-import os
 import logging
+import sys
+from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 LOG_FILE = "combine_txt.log"
+OUTPUT_FILENAME = "combined_output.txt"
 
-def setup_logging() -> logging.Logger:
-    logger = logging.getLogger("combiner")
+EXIT_OK = 0
+EXIT_FAILURE = 1
+EXIT_PARTIAL = 2
+
+logger = logging.getLogger("combiner")
+
+
+@dataclass(frozen=True)
+class CombineResult:
+    succeeded: bool
+    processed: int = 0
+    read_errors: int = 0
+
+
+def setup_logging() -> None:
+    if logger.handlers:
+        return
+
     logger.setLevel(logging.DEBUG)
 
     ch = logging.StreamHandler()
@@ -16,54 +35,79 @@ def setup_logging() -> logging.Logger:
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
 
-    logger.handlers.clear()
     logger.addHandler(ch)
     logger.addHandler(fh)
-    return logger
 
-def combine_txt_files(directory: str, output_filename: str = "combined_output.txt") -> None:
-    logger = setup_logging()
-    logger.info(f"Starting combine in: {directory}")
-    combined_lines = []
+
+def combine_txt_files(
+    directory: str | Path, output_filename: str = OUTPUT_FILENAME
+) -> CombineResult:
+    logger.info("Starting combine in: %s", directory)
 
     processed = 0
     read_errors = 0
     total_bytes = 0
 
     try:
-        filenames = os.listdir(directory)
-    except Exception as e:
-        logger.exception(f"Failed to list directory '{directory}': {e}")
-        return
+        entries = sorted(Path(directory).iterdir())
+    except OSError:
+        logger.exception("Failed to list directory '%s'", directory)
+        return CombineResult(succeeded=False)
 
-    for filename in filenames:
-        if filename.endswith(".txt") and filename != output_filename:
-            filepath = os.path.join(directory, filename)
-            try:
-                with open(filepath, 'r', encoding='utf-8') as file:
-                    content = file.read()
-                    combined_lines.append(content)
-                    processed += 1
-                    total_bytes += len(content.encode("utf-8", errors="ignore"))
-                    logger.debug(f"Added file: {filepath}")
-            except Exception as e:
-                read_errors += 1
-                logger.exception(f"Failed to read {filename}: {e}")
+    txt_files = [
+        path
+        for path in entries
+        if path.is_file() and path.suffix.lower() == ".txt" and path.name != output_filename
+    ]
+    if not txt_files:
+        logger.warning("No .txt files found in: %s", directory)
 
-    output_path = os.path.join(".", output_filename)
+    output_path = Path(output_filename)
     try:
-        with open(output_path, 'w', encoding='utf-8') as output_file:
-            output_file.write("\n".join(combined_lines))
-        logger.info(f"Combined file saved to: {output_path}")
-    except Exception as e:
-        logger.exception(f"Failed to write output file: {e}")
-        return
+        with open(output_path, "w", encoding="utf-8") as output_file:
+            for path in txt_files:
+                try:
+                    content = path.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    read_errors += 1
+                    logger.exception("Failed to read %s", path.name)
+                    continue
+                if content and not content.endswith("\n"):
+                    content += "\n"
+                output_file.write(f"--- {path.name} ---\n")
+                output_file.write(content)
+                processed += 1
+                total_bytes += len(content.encode("utf-8"))
+                logger.debug("Added file: %s", path)
+    except OSError:
+        logger.exception("Failed to write output file")
+        return CombineResult(succeeded=False, processed=processed, read_errors=read_errors)
 
+    logger.info("Combined file saved to: %s", output_path)
     logger.info(
-        f"Summary — files processed: {processed}, read errors: {read_errors}, "
-        f"bytes written (pre-UTF8 join): {total_bytes}"
+        "Summary - files processed: %d, read errors: %d, "
+        "content bytes written (excluding separators): %d",
+        processed,
+        read_errors,
+        total_bytes,
     )
+    return CombineResult(succeeded=True, processed=processed, read_errors=read_errors)
+
+
+def main() -> int:
+    setup_logging()
+    result = combine_txt_files(Path.cwd() / "input")
+    if not result.succeeded:
+        return EXIT_FAILURE
+    if result.read_errors:
+        logger.warning(
+            "Completed with %d read error(s); exiting with status %d",
+            result.read_errors,
+            EXIT_PARTIAL,
+        )
+        return EXIT_PARTIAL
+    return EXIT_OK
+
 
 if __name__ == "__main__":
-    input_directory = os.path.join(os.getcwd(), "input")
-    combine_txt_files(input_directory)
+    sys.exit(main())
