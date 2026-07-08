@@ -1,4 +1,10 @@
 /venv
 input/*.txt
 combined_output.txt
-combine_txt.log
+combine_txt.log*
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
