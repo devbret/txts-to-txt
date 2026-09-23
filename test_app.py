@@ -105,3 +105,80 @@ def test_main_returns_failure_when_input_directory_is_missing(tmp_path, monkeypa
     monkeypatch.chdir(tmp_path)
 
     assert app.main() == app.EXIT_FAILURE
+
+
+class _FailingHandle:
+    def __init__(self, handle, writes_allowed: int):
+        self._handle = handle
+        self._writes_allowed = writes_allowed
+
+    def write(self, text: str) -> int:
+        if self._writes_allowed <= 0:
+            raise OSError("No space left on device")
+        self._writes_allowed -= 1
+        return self._handle.write(text)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return self._handle.__exit__(*exc_info)
+
+
+def temp_files(directory: Path) -> list[Path]:
+    return list(directory.glob(f".{app.OUTPUT_FILENAME}.*.tmp"))
+
+
+def test_write_failure_leaves_previous_output_intact(workspace, monkeypatch):
+    output_path = workspace.parent / app.OUTPUT_FILENAME
+    output_path.write_text("previous run\n", encoding="utf-8")
+    (workspace / "a.txt").write_text("first\n", encoding="utf-8")
+    (workspace / "b.txt").write_text("second\n", encoding="utf-8")
+
+    real_open = open
+
+    def failing_open(*args, **kwargs):
+        handle = real_open(*args, **kwargs)
+        if isinstance(args[0], int):
+            return _FailingHandle(handle, writes_allowed=3)
+        return handle
+
+    monkeypatch.setattr("builtins.open", failing_open)
+
+    result = app.combine_txt_files(workspace)
+
+    assert not result.succeeded
+    assert output_path.read_text(encoding="utf-8") == "previous run\n"
+    assert temp_files(workspace.parent) == []
+
+
+def test_rename_failure_leaves_previous_output_intact(workspace, monkeypatch):
+    output_path = workspace.parent / app.OUTPUT_FILENAME
+    output_path.write_text("previous run\n", encoding="utf-8")
+    (workspace / "a.txt").write_text("first\n", encoding="utf-8")
+
+    def failing_replace(*args, **kwargs):
+        raise OSError("Cross-device link")
+
+    monkeypatch.setattr(app.os, "replace", failing_replace)
+
+    assert not app.combine_txt_files(workspace).succeeded
+    assert output_path.read_text(encoding="utf-8") == "previous run\n"
+    assert temp_files(workspace.parent) == []
+
+
+def test_successful_run_leaves_no_temp_files(workspace):
+    (workspace / "a.txt").write_text("first\n", encoding="utf-8")
+
+    assert app.combine_txt_files(workspace).succeeded
+    assert output_text(workspace) == "--- a.txt ---\nfirst\n"
+    assert temp_files(workspace.parent) == []
+
+
+def test_output_is_readable_after_atomic_replace(workspace):
+    (workspace / "a.txt").write_text("first\n", encoding="utf-8")
+
+    app.combine_txt_files(workspace)
+
+    mode = (workspace.parent / app.OUTPUT_FILENAME).stat().st_mode & 0o777
+    assert mode & 0o400

@@ -1,6 +1,7 @@
 /venv
 input/*.txt
 combined_output.txt
+.combined_output.txt.*.tmp
 combine_txt.log*
 __pycache__/
 .pytest_cache/

@@ -1,5 +1,7 @@
 import logging
+import os
 import sys
+import tempfile
 from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -63,8 +65,13 @@ def combine_txt_files(
         logger.warning("No .txt files found in: %s", directory)
 
     output_path = Path(output_filename)
+    temp_path: Path | None = None
     try:
-        with open(output_path, "w", encoding="utf-8") as output_file:
+        handle, temp_name = tempfile.mkstemp(
+            dir=output_path.parent, prefix=f".{output_path.name}.", suffix=".tmp"
+        )
+        temp_path = Path(temp_name)
+        with open(handle, "w", encoding="utf-8") as output_file:
             for path in txt_files:
                 try:
                     content = path.read_text(encoding="utf-8")
@@ -79,8 +86,14 @@ def combine_txt_files(
                 processed += 1
                 total_bytes += len(content.encode("utf-8"))
                 logger.debug("Added file: %s", path)
+        umask = os.umask(0)
+        os.umask(umask)
+        os.chmod(temp_path, 0o666 & ~umask)
+        os.replace(temp_path, output_path)
     except OSError:
         logger.exception("Failed to write output file")
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
         return CombineResult(succeeded=False, processed=processed, read_errors=read_errors)
 
     logger.info("Combined file saved to: %s", output_path)
