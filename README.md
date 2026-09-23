@@ -10,7 +10,7 @@ A structured logging system prints messages to the console while writing debug l
 
 ## Basic Setup Instructions
 
-Below are instructions for installing and running this application on a Linux machine.
+Below are instructions for installing, running and testing this application on a Linux machine.
 
 ### Programs Needed
 
@@ -34,11 +34,7 @@ Below are instructions for installing and running this application on a Linux ma
 
 7. The results will be saved to `combined_output.txt` at the root of this repo
 
-### Running Application Tests
-
-The test suite uses [pytest](https://docs.pytest.org/) and code style is enforced with [ruff](https://docs.astral.sh/ruff/).
-
-To run everything locally:
+### Tests
 
 1. Install the tools: `pip install pytest ruff`
 
